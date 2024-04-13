@@ -59,12 +59,12 @@ class LocalMatPack(LocalPack, MatPack):
                        True: "MatSetValues"}
 
 
-class LocalMatKernelArg(op2.MatKernelArg):
+class LocalMatKernelArg(op2.compute_backend.MatKernelArg):
 
     pack = LocalMatPack
 
 
-class LocalMatLegacyArg(op2.MatLegacyArg):
+class LocalMatLegacyArg(op2.compute_backend.MatLegacyArg):
 
     @property
     def global_kernel_arg(self):
@@ -72,7 +72,7 @@ class LocalMatLegacyArg(op2.MatLegacyArg):
         return LocalMatKernelArg(self.data.dims, map_args)
 
 
-class LocalMat(pyop2.types.AbstractMat):
+class LocalMat(pyop2.compute_backend.types.AbstractMat):
 
     def __init__(self, dset):
         self._sparsity = DenseSparsity(dset, dset)
@@ -94,7 +94,7 @@ class LocalDatPack(LocalPack, DatPack):
             return None
 
 
-class LocalDatKernelArg(op2.DatKernelArg):
+class LocalDatKernelArg(op2.compute_backend.DatKernelArg):
 
     def __init__(self, *args, needs_mask, **kwargs):
         super().__init__(*args, **kwargs)
@@ -105,7 +105,7 @@ class LocalDatKernelArg(op2.DatKernelArg):
         return partial(LocalDatPack, self.needs_mask)
 
 
-class LocalDatLegacyArg(op2.DatLegacyArg):
+class LocalDatLegacyArg(op2.compute_backend.DatLegacyArg):
 
     @property
     def global_kernel_arg(self):
@@ -114,7 +114,7 @@ class LocalDatLegacyArg(op2.DatLegacyArg):
                                  needs_mask=self.data.needs_mask)
 
 
-class LocalDat(pyop2.types.AbstractDat):
+class LocalDat(pyop2.compute_backend.types.AbstractDat):
     def __init__(self, dset, needs_mask=False):
         self._dataset = dset
         self.dtype = numpy.dtype(PETSc.ScalarType)
@@ -170,23 +170,23 @@ def matrix_funptr(form, state):
         else:
             get_map = None
 
-        toset = op2.Set(1, comm=test.comm)
-        dofset = op2.DataSet(toset, 1)
+        toset = op2.compute_backend.Set(1, comm=test.comm)
+        dofset = op2.compute_backend.DataSet(toset, 1)
         arity = sum(m.arity*s.cdim
                     for m, s in zip(get_map(test),
                                     test.dof_dset))
         iterset = get_map(test).iterset
-        entity_node_map = op2.Map(iterset,
-                                  toset, arity,
-                                  values=numpy.zeros(iterset.total_size*arity, dtype=IntType))
+        entity_node_map = op2.compute_backend.Map(iterset,
+                                                  toset, arity,
+                                                  values=numpy.zeros(iterset.total_size*arity, dtype=IntType))
         mat = LocalMat(dofset)
 
         arg = mat(op2.INC, (entity_node_map, entity_node_map))
         args.append(arg)
         statedat = LocalDat(dofset)
-        state_entity_node_map = op2.Map(iterset,
-                                        toset, arity,
-                                        values=numpy.zeros(iterset.total_size*arity, dtype=IntType))
+        state_entity_node_map = op2.compute_backend.Map(iterset,
+                                                        toset, arity,
+                                                        values=numpy.zeros(iterset.total_size*arity, dtype=IntType))
         statearg = statedat(op2.READ, state_entity_node_map)
 
         mesh = form.ufl_domains()[kinfo.domain_number]
@@ -220,10 +220,10 @@ def matrix_funptr(form, state):
         if kinfo.integral_type == "interior_facet":
             arg = mesh.interior_facets.local_facet_dat(op2.READ)
             args.append(arg)
-        iterset = op2.Subset(iterset, [])
+        iterset = op2.compute_backend.Subset(iterset, [])
 
         wrapper_knl_args = tuple(a.global_kernel_arg for a in args)
-        mod = op2.GlobalKernel(kinfo.kernel, wrapper_knl_args, subset=True)
+        mod = op2.compute_backend.GlobalKernel(kinfo.kernel, wrapper_knl_args, subset=True)
         kernels.append(CompiledKernel(mod.compile(iterset.comm), kinfo))
     return cell_kernels, int_facet_kernels
 
@@ -262,21 +262,21 @@ def residual_funptr(form, state):
         else:
             get_map = None
 
-        toset = op2.Set(1, comm=test.comm)
-        dofset = op2.DataSet(toset, 1)
+        toset = op2.compute_backend.Set(1, comm=test.comm)
+        dofset = op2.compute_backend.DataSet(toset, 1)
         arity = sum(m.arity*s.cdim
                     for m, s in zip(get_map(test),
                                     test.dof_dset))
         iterset = get_map(test).iterset
-        entity_node_map = op2.Map(iterset,
+        entity_node_map = op2.compute_backend.Map(iterset,
                                   toset, arity,
                                   values=numpy.zeros(iterset.total_size*arity, dtype=IntType))
         dat = LocalDat(dofset, needs_mask=True)
 
         statedat = LocalDat(dofset)
-        state_entity_node_map = op2.Map(iterset,
-                                        toset, arity,
-                                        values=numpy.zeros(iterset.total_size*arity, dtype=IntType))
+        state_entity_node_map = op2.compute_backend.Map(iterset,
+                                                        toset, arity,
+                                                        values=numpy.zeros(iterset.total_size*arity, dtype=IntType))
         statearg = statedat(op2.READ, state_entity_node_map)
 
         arg = dat(op2.INC, entity_node_map)
@@ -314,10 +314,10 @@ def residual_funptr(form, state):
         if kinfo.integral_type == "interior_facet":
             arg = extract_unique_domain(test).interior_facets.local_facet_dat(op2.READ)
             args.append(arg)
-        iterset = op2.Subset(iterset, [])
+        iterset = op2.compute_backend.Subset(iterset, [])
 
         wrapper_knl_args = tuple(a.global_kernel_arg for a in args)
-        mod = op2.GlobalKernel(kinfo.kernel, wrapper_knl_args, subset=True)
+        mod = op2.compute_backend.GlobalKernel(kinfo.kernel, wrapper_knl_args, subset=True)
         kernels.append(CompiledKernel(mod.compile(iterset.comm), kinfo))
     return cell_kernels, int_facet_kernels
 

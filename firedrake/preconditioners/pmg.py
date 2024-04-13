@@ -526,10 +526,10 @@ def prolongation_transfer_kernel_action(Vf, expr):
     if kernel.needs_external_coords:
         coefficients = [Vf.mesh().coordinates] + coefficients
 
-    return op2.Kernel(kernel.ast, kernel.name,
-                      requires_zeroed_output_arguments=True,
-                      flop_count=kernel.flop_count,
-                      events=(kernel.event,)), coefficients
+    return op2.compute_backend.Kernel(kernel.ast, kernel.name,
+                                      requires_zeroed_output_arguments=True,
+                                      flop_count=kernel.flop_count,
+                                      events=(kernel.event,)), coefficients
 
 
 def expand_element(ele):
@@ -725,7 +725,7 @@ def get_permuted_map(V):
     indices, _, _ = get_permutation_to_line_elements(V)
     if numpy.all(indices[:-1] < indices[1:]):
         return V.cell_node_map()
-    return op2.PermutedMap(V.cell_node_map(), indices)
+    return op2.compute_backend.PermutedMap(V.cell_node_map(), indices)
 
 
 # Common kernel to compute y = kron(A3, kron(A2, A1)) * x
@@ -1198,8 +1198,8 @@ class StandaloneInterpolationMatrix(object):
             return;
         }}
         """
-        kernel = op2.Kernel(kernel_code, "weight", requires_zeroed_output_arguments=True)
-        op2.par_loop(kernel, weight.cell_set, weight.dat(op2.INC, weight.cell_node_map()))
+        kernel = op2.compute_backend.Kernel(kernel_code, "weight", requires_zeroed_output_arguments=True)
+        op2.compute_backend.par_loop(kernel, weight.cell_set, weight.dat(op2.INC, weight.cell_node_map()))
         with weight.dat.vec as w:
             w.reciprocal()
         return weight
@@ -1232,8 +1232,8 @@ class StandaloneInterpolationMatrix(object):
                          self.uf.dat(op2.READ, uf_map),
                          self._weight.dat(op2.READ, uf_map)]
         coefficient_args = [c.dat(op2.READ, c.cell_node_map()) for c in coefficients]
-        prolong = op2.ParLoop(*prolong_args, *coefficient_args)
-        restrict = op2.ParLoop(*restrict_args, *coefficient_args)
+        prolong = op2.compute_backend.ParLoop(*prolong_args, *coefficient_args)
+        restrict = op2.compute_backend.ParLoop(*restrict_args, *coefficient_args)
         return prolong, restrict
 
     def _prolong(self):
@@ -1406,9 +1406,9 @@ class StandaloneInterpolationMatrix(object):
         }}
         """
         from firedrake.slate.slac.compiler import BLASLAPACK_LIB, BLASLAPACK_INCLUDE
-        prolong_kernel = op2.Kernel(kernel_code, "prolongation", include_dirs=BLASLAPACK_INCLUDE.split(),
+        prolong_kernel = op2.compute_backend.Kernel(kernel_code, "prolongation", include_dirs=BLASLAPACK_INCLUDE.split(),
                                     ldargs=BLASLAPACK_LIB.split(), requires_zeroed_output_arguments=True)
-        restrict_kernel = op2.Kernel(kernel_code, "restriction", include_dirs=BLASLAPACK_INCLUDE.split(),
+        restrict_kernel = op2.compute_backend.Kernel(kernel_code, "restriction", include_dirs=BLASLAPACK_INCLUDE.split(),
                                      ldargs=BLASLAPACK_LIB.split(), requires_zeroed_output_arguments=True)
         return prolong_kernel, restrict_kernel, coefficients
 
@@ -1441,7 +1441,7 @@ class StandaloneInterpolationMatrix(object):
                    Rc[j] += Afc[i*{dimc} + j] * Rf[i] * w[i];
         }}
         """
-        restrict_kernel = op2.Kernel(
+        restrict_kernel = op2.compute_backend.Kernel(
             restrict_code,
             "restriction",
             requires_zeroed_output_arguments=True,
@@ -1533,13 +1533,13 @@ def prolongation_matrix_aij(P1, Pk, P1_bcs=[], Pk_bcs=[]):
         P1 = P1.function_space()
     if isinstance(Pk, firedrake.Function):
         Pk = Pk.function_space()
-    sp = op2.Sparsity((Pk.dof_dset,
+    sp = op2.compute_backend.Sparsity((Pk.dof_dset,
                        P1.dof_dset),
                       {(i, j): [(rmap, cmap, None)]
                           for i, rmap in enumerate(Pk.cell_node_map())
                           for j, cmap in enumerate(P1.cell_node_map())
                           if i == j})
-    mat = op2.Mat(sp, PETSc.ScalarType)
+    mat = op2.compute_backend.Mat(sp, PETSc.ScalarType)
     mesh = Pk.mesh()
 
     fele = Pk.ufl_element()
@@ -1562,7 +1562,7 @@ def prolongation_matrix_aij(P1, Pk, P1_bcs=[], Pk_bcs=[]):
                 m_ = coefficient.cell_node_map()
                 parloop_args.append(coefficient.dat(op2.READ, m_))
 
-            op2.par_loop(*parloop_args)
+            op2.compute_backend.par_loop(*parloop_args)
 
     else:
         rlgmap, clgmap = mat.local_to_global_maps
@@ -1579,7 +1579,7 @@ def prolongation_matrix_aij(P1, Pk, P1_bcs=[], Pk_bcs=[]):
             m_ = coefficient.cell_node_map()
             parloop_args.append(coefficient.dat(op2.READ, m_))
 
-        op2.par_loop(*parloop_args)
+        op2.compute_backend.par_loop(*parloop_args)
 
     mat.assemble()
     return mat.handle

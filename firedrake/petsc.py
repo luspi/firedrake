@@ -4,12 +4,18 @@ import itertools
 import os
 import subprocess
 from contextlib import contextmanager
+import firedrake_configuration
 from typing import Any
 
 import petsc4py
 from mpi4py import MPI
 from petsc4py import PETSc
 from pyop2 import mpi
+
+
+if firedrake_configuration.get_config()["options"].get("cuda"):
+    PETSc.Sys.initializeDevice(PETSc.Device.Type.CUDA)
+    import pycuda.autoprimaryctx  # noqa: F401
 
 
 __all__ = ("PETSc", "OptionsManager", "get_petsc_variables")

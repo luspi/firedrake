@@ -937,12 +937,12 @@ def make_interpolator(expr, V, subset, access, bcs=None):
             # We make our own linear operator for this case using PETSc SFs
             tensor = None
         else:
-            sparsity = op2.Sparsity((V.dof_dset, argfs.dof_dset),
-                                    [(V.cell_node_map(), argfs_map, None)],  # non-mixed
-                                    name="%s_%s_sparsity" % (V.name, argfs.name),
-                                    nest=False,
-                                    block_sparse=True)
-            tensor = op2.Mat(sparsity)
+            sparsity = op2.compute_backend.Sparsity((V.dof_dset, argfs.dof_dset),
+                                                    [(V.cell_node_map(), argfs_map, None)],  # non-mixed
+                                                    name="%s_%s_sparsity" % (V.name, argfs.name),
+                                                    nest=False,
+                                                    block_sparse=True)
+            tensor = op2.compute_backend.Mat(sparsity)
         f = tensor
     else:
         raise ValueError("Cannot interpolate an expression with %d arguments" % len(arguments))
@@ -1080,8 +1080,8 @@ def _interpolator(V, tensor, expr, subset, arguments, access, bcs=None):
     coefficient_numbers = kernel.coefficient_numbers
     needs_external_coords = kernel.needs_external_coords
     name = kernel.name
-    kernel = op2.Kernel(ast, name, requires_zeroed_output_arguments=True,
-                        flop_count=kernel.flop_count, events=(kernel.event,))
+    kernel = op2.compute_backend.Kernel(ast, name, requires_zeroed_output_arguments=True,
+                                        flop_count=kernel.flop_count, events=(kernel.event,))
     parloop_args = [kernel, cell_set]
 
     coefficients = tsfc_interface.extract_numbered_coefficients(expr, coefficient_numbers)
@@ -1110,7 +1110,7 @@ def _interpolator(V, tensor, expr, subset, arguments, access, bcs=None):
 
     if tensor in set((c.dat for c in coefficients)):
         output = tensor
-        tensor = op2.Dat(tensor.dataset)
+        tensor = op2.compute_backend.Dat(tensor.dataset)
         if access is not op2.WRITE:
             copyin = (partial(output.copy, tensor), )
         else:
@@ -1179,9 +1179,9 @@ def _interpolator(V, tensor, expr, subset, arguments, access, bcs=None):
     for const in extract_firedrake_constants(expr):
         parloop_args.append(const.dat(op2.READ))
 
-    parloop = op2.ParLoop(*parloop_args)
+    parloop = op2.compute_backend.ParLoop(*parloop_args)
     parloop_compute_callable = parloop.compute
-    if isinstance(tensor, op2.Mat):
+    if isinstance(tensor, op2.compute_backend.Mat):
         return parloop_compute_callable, tensor.assemble
     else:
         return copyin + (parloop_compute_callable, ) + copyout
@@ -1277,7 +1277,7 @@ def compose_map_and_cache(map1, map2):
         cmap = map1._cache[cache_key]
     except KeyError:
         # Real function space case separately
-        cmap = None if map2 is None else op2.ComposedMap(map2, map1)
+        cmap = None if map2 is None else op2.compute_backend.ComposedMap(map2, map1)
         map1._cache[cache_key] = cmap
     return cmap
 
@@ -1395,7 +1395,7 @@ def vom_cell_parent_node_map_extruded(vertex_only_mesh, extruded_cell_node_map):
         cnm.values_with_halo[base_cell, :] + height * cnm.offset[:]
         for base_cell, height in zip(base_cells, heights)
     ]
-    return op2.Map(
+    return op2.compute_backend.Map(
         vmx.cell_set, cnm.toset, dofs_per_target_cell, target_cell_parent_node_list
     )
 
